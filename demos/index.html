@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="平面图转 3D 的六步示意：上传、只认结构、确认比例、改清单、挤出、手填兜底。不是 CAD。">
+<title>平面图 → 3D · 示意</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect fill='%23f4f0e8' width='16' height='16'/%3E%3Cpath d='M2 11.5 L8 4 L14 11.5' fill='none' stroke='%230f5e5b' stroke-width='1.6'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #d8d0c3;
+    --paper: #f7f4ee;
+    --ink: #1d1a16;
+    --muted: #5f594f;
+    --line: #ddd4c6;
+    --accent: #0f5e5b;
+    --accent-soft: #e5f2f1;
+    --warn: #8a4514;
+    --shadow: 0 18px 44px rgba(48, 38, 26, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 420px at 0% -10%, #efe6d6, transparent 55%),
+      var(--bg);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", "WenQuanYi Micro Hei", "Droid Sans Fallback", "Segoe UI", sans-serif;
+    line-height: 1.5;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 72px; }
+  .kicker {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 { margin: 0; font-size: clamp(1.8rem, 3vw, 2.55rem); letter-spacing: -0.03em; line-height: 1.15; font-weight: 650; }
+  .lede { max-width: 40rem; margin: 12px 0 0; color: var(--muted); }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    list-style: none;
+    margin: 28px 0 18px;
+    padding: 0;
+  }
+  .steps button {
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-top: 2px solid #c9bfb0;
+    padding: 10px 4px 0;
+    color: var(--muted);
+    min-height: 44px;
+  }
+  .steps button[aria-current="step"] { border-top-color: var(--accent); color: var(--ink); }
+  .steps button:disabled { opacity: 0.42; cursor: not-allowed; }
+  .steps .n { display: block; font-size: 11px; letter-spacing: 0.12em; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.72fr);
+    gap: 18px;
+    align-items: start;
+  }
+  .sheet, .panel {
+    background: var(--paper);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+  }
+  .sheet { overflow: hidden; }
+  .sheet-top, .caption {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .sheet-top { border-bottom: 1px solid var(--line); }
+  .caption { margin: 0; border-top: 1px solid var(--line); }
+  #flag {
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  #viewport svg { display: block; width: 100%; height: auto; }
+  #viewport canvas {
+    display: block;
+    width: 100%;
+    height: min(68vw, 520px);
+    touch-action: none;
+    cursor: grab;
+    background:
+      linear-gradient(rgba(36, 48, 60, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(36, 48, 60, 0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-color: #f3efe6;
+  }
+  #viewport canvas.dragging { cursor: grabbing; }
+  svg .wall { stroke: #243044; stroke-width: 1.25; fill: none; stroke-linecap: square; }
+  svg.mode-2 .wall { stroke: var(--accent); }
+  svg.mode-3 .wall.is-on,
+  svg.mode-3 .wall.is-hint { stroke: var(--accent); stroke-width: 2.15; }
+  svg.mode-3 .wall.is-hint { stroke-dasharray: 2.2 1.3; }
+  svg.mode-2 .wall { stroke-dasharray: 100; animation: draw 0.7s ease both; }
+  svg .ghost { fill: none; stroke: var(--warn); stroke-width: 1.15; stroke-dasharray: 1.5 1.1; }
+  svg .ghost.fixed { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.6; }
+  svg .door-block { stroke: #243044; stroke-width: 1.35; }
+  svg.mode-4 .furn.as-wall { opacity: 1; stroke: var(--accent); stroke-width: 1.15; }
+  @keyframes draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+  svg .hit { fill: transparent; }
+  svg.mode-3 .hit,
+  svg.mode-4 .hit { cursor: pointer; }
+  svg .door { fill: none; stroke: var(--accent); stroke-width: 0.35; }
+  svg .col-shape { fill: none; stroke: #243044; stroke-width: 0.45; }
+  svg .furn { fill: none; stroke: #b3ab9e; stroke-width: 0.45; }
+  svg.mode-2 .furn { opacity: 0.45; }
+  svg.mode-3 .furn { opacity: 0.28; }
+  svg .ignore { display: none; fill: var(--warn); font-size: 2.15px; }
+  svg.mode-2 .ignore { display: block; }
+  svg .room { fill: #6d675e; font-size: 2.7px; }
+  svg .tiny { fill: #6d675e; font-size: 2.15px; }
+  svg .north { fill: #243044; }
+  .panel { padding: 18px 18px 16px; position: sticky; top: 14px; }
+  .panel h2 { margin: 0 0 8px; font-size: 1.25rem; letter-spacing: -0.02em; }
+  .panel p { margin: 0 0 10px; }
+  .fine, .panel .fine { color: var(--muted); font-size: 13px; }
+  .facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .facts li {
+    padding-left: 12px;
+    border-left: 2px solid var(--line);
+    font-size: 14px;
+  }
+  .picks { display: grid; gap: 6px; margin: 12px 0; }
+  .picks label {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #f1ebe3;
+    border: 1px solid transparent;
+    min-height: 44px;
+    cursor: pointer;
+  }
+  .picks label:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .field { display: grid; gap: 6px; font-size: 14px; margin-top: 8px; }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; min-width: 0; }
+  input[type="text"], select {
+    background: #fff;
+    border: 1px solid #d5cec2;
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .readout {
+    margin-top: 12px;
+    background: #efeae2;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 14px;
+  }
+  .readout p { margin: 0 0 4px; }
+  .readout p:last-child { margin: 0; }
+  .warn { color: var(--warn); font-size: 14px; margin-top: 8px; }
+  .warn:empty { display: none; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .primary, .ghost, .tinybtn {
+    border-radius: 999px;
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  .primary { background: var(--ink); color: var(--paper); border: 0; }
+  .primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ghost, .tinybtn { background: transparent; border: 1px solid #d5cec2; }
+  .turn { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .stat {
+    background: #efeae2;
+    border-radius: 12px;
+    padding: 10px;
+  }
+  .stat b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .underlay svg { opacity: 0.42; }
+  .drop {
+    min-height: 340px;
+    margin: 18px;
+    border: 1.5px dashed var(--accent);
+    border-radius: 16px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 8px;
+    text-align: center;
+    padding: 28px 18px;
+    background: #f3f7f6;
+    cursor: pointer;
+  }
+  .drop strong { font-size: 1.15rem; letter-spacing: -0.02em; }
+  .drop.over { background: var(--accent-soft); }
+  .always {
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--accent);
+    background: rgba(247, 244, 238, 0.72);
+    border-radius: 0 10px 10px 0;
+    font-size: 14px;
+  }
+  .issues { display: grid; gap: 8px; margin-top: 8px; }
+  .issues button {
+    text-align: left;
+    background: #f1ebe3;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  .issues button[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .key { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
+  .swatch { width: 10px; height: 10px; display: inline-block; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
+  .swatch.wall { background: #d3c6b4; }
+  .swatch.col { background: #a89884; }
+  .swatch.gap { background: var(--accent); }
+  footer {
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  footer a { color: var(--ink); }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .panel { position: static; }
+    #viewport canvas { height: 320px; }
+    .steps { gap: 4px; }
+    .steps button { font-size: 13px; padding-left: 0; padding-right: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    svg.mode-2 .wall { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="kicker">agent-skills-public · demo</p>
+    <h1>平面图 → 3D</h1>
+    <p class="lede">六步走完一张假图纸。只认墙、门、柱；全图的米数要点过长墙、并复核第二条尺寸之后才锁定。这不是 CAD，也不会真的上传文件。</p>
+    <ol class="steps" id="steps"></ol>
+    <p class="always">识别不准时：底图 + 手填长宽</p>
+    <div class="layout">
+      <section class="sheet" aria-label="图纸">
+        <div class="sheet-top">
+          <span id="file">内置示意 · 无文件</span>
+          <span id="flag">比例未定</span>
+        </div>
+        <div id="viewport"></div>
+        <p class="caption" id="caption"></p>
+      </section>
+      <aside class="panel" id="panel"></aside>
+    </div>
+    <footer>
+      <span>示意页。不上传图纸，不连接服务器。</span>
+      <a href="../ip-character/index.html">IP 角色设计示意</a>
+    </footer>
+  </div>
+  <p class="sr" id="live" aria-live="polite"></p>
+<script>
+"use strict";
+
+const SHEET = { x0: 6, y0: 6, w: 88, d: 52 };
+const WALLS = [
+  { id: "north", name: "北外墙", outer: true, longest: true, x1: 6, y1: 6, x2: 94, y2: 6 },
+  { id: "west", name: "西外墙", outer: true, x1: 6, y1: 6, x2: 6, y2: 58 },
+  { id: "east", name: "东外墙", outer: true, x1: 94, y1: 6, x2: 94, y2: 58 },
+  { id: "south-a", name: "南外墙 · 西段", outer: true, x1: 6, y1: 58, x2: 18, y2: 58 },
+  { id: "south-b", name: "南外墙 · 东段", outer: true, x1: 32, y1: 58, x2: 94, y2: 58 },
+  { id: "part-a", name: "隔墙 · 北段", outer: false, x1: 62, y1: 6, x2: 62, y2: 16 },
+  { id: "part-b", name: "隔墙 · 南段", outer: false, x1: 62, y1: 26, x2: 62, y2: 36 },
+  { id: "part-h", name: "隔墙 · 横段", outer: false, x1: 62, y1: 36, x2: 94, y2: 36 }
+];
+const MISSING = { x1: 36, y1: 24, x2: 56, y2: 24 };
+const STEPS = [
+  { n: "01", label: "上传" },
+  { n: "02", label: "识别" },
+  { n: "03", label: "比例" },
+  { n: "04", label: "清单" },
+  { n: "05", label: "挤出" },
+  { n: "06", label: "兜底" }
+];
+const FIX_KEY = { missing: "fixMissing", furniture: "fixFurniture", door: "fixDoor" };
+
+const state = {
+  step: 1,
+  reached: 1,
+  loaded: false,
+  picked: false,
+  selected: null,
+  lengthRaw: "",
+  unit: "m",
+  checkId: "west",
+  checkRaw: "",
+  checkUnit: "m",
+  scaleConfirmed: false,
+  fixMissing: false,
+  fixFurniture: false,
+  fixDoor: false,
+  handL: "",
+  handW: "",
+  yaw: -0.55,
+  pitch: 0.55,
+  height: 4,
+  heightTouched: false,
+  extrude: 1,
+  innerHint: ""
+};
+
+let animToken = 0;
+
+function wallLen(w) {
+  return Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+}
+function findWall(id) {
+  return WALLS.find((w) => w.id === id);
+}
+function fmt(n) {
+  if (!Number.isFinite(n)) return "—";
+  const digits = Math.abs(n) >= 100 ? 1 : 2;
+  return n.toFixed(digits);
+}
+function parseLength(raw) {
+  const t = String(raw).trim().replace(/,/g, ".");
+  if (!t) return { error: "empty" };
+  if (!/^\d+(\.\d+)?$/.test(t)) return { error: "nan" };
+  return { value: Number(t) };
+}
+function convert(value, unit) {
+  if (unit === "mm") return value / 1000;
+  if (unit === "ft") return value * 0.3048;
+  return value;
+}
+function esc(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+function unitName(unit) {
+  return unit === "mm" ? "毫米" : unit === "ft" ? "英尺" : "米";
+}
+function measure(raw, unit, wallId) {
+  const parsed = parseLength(raw);
+  if (parsed.error) return { ok: false, error: parsed.error };
+  const wall = findWall(wallId);
+  if (!wall) return { ok: false, error: "nowall" };
+  const sheetLen = wallLen(wall);
+  const entered = convert(parsed.value, unit);
+  if (!(entered > 0)) return { ok: false, error: "zero" };
+  const mPer = entered / sheetLen;
+  const widthM = SHEET.w * mPer;
+  const depthM = SHEET.d * mPer;
+  const longest = Math.max(widthM, depthM);
+  const base = { entered, widthM, depthM, longest, wall, sheetLen, mPer };
+  if (entered < 3 || entered > 200 || longest < 3 || longest > 200) {
+    return Object.assign({ ok: false, error: "range" }, base);
+  }
+  return Object.assign({ ok: true }, base);
+}
+function metrics() {
+  if (!state.picked || !state.selected) return { ok: false, error: "nopick" };
+  return measure(state.lengthRaw, state.unit, state.selected);
+}
+function secondMetrics() {
+  if (state.checkId === state.selected) return { ok: false, error: "same" };
+  return measure(state.checkRaw, state.checkUnit, state.checkId);
+}
+function scalesAgree(a, b) {
+  if (!a.ok || !b.ok) return false;
+  const ratio = a.mPer / b.mPer;
+  return ratio > 0.92 && ratio < 1.087;
+}
+function canConfirm() {
+  return scalesAgree(metrics(), secondMetrics());
+}
+function stepEnabled(n) {
+  if (n === state.step) return true;
+  if (n < 1 || n > 6) return false;
+  if (n > 1 && !state.loaded) return false;
+  if (n > 3 && !state.scaleConfirmed) return false;
+  if (n < state.step) return true;
+  if (n <= state.reached) return true;
+  return n === state.step + 1;
+}
+function ensureCheckWall() {
+  if (state.checkId !== state.selected) return;
+  const other = WALLS.find((w) => w.outer && w.id !== state.selected);
+  state.checkId = other ? other.id : "west";
+}
+
+function renderSteps() {
+  const ol = document.getElementById("steps");
+  ol.innerHTML = STEPS.map((s, i) => {
+    const n = i + 1;
+    const current = n === state.step ? ' aria-current="step"' : "";
+    const disabled = stepEnabled(n) ? "" : " disabled";
+    return `<li><button type="button" data-step="${n}"${current}${disabled}><span class="n">${s.n}</span><span class="label">${s.label}</span></button></li>`;
+  }).join("");
+}
+
+function flagText() {
+  if (!state.loaded) return "还没有图";
+  if (!state.scaleConfirmed) return "比例未锁定";
+  if (state.step === 6) return "手填兜底";
+  if (state.step === 5) return "已挤出";
+  return "比例已锁定";
+}
+function captionText() {
+  if (state.step === 1) return state.loaded ? "图已放上。比例还没锁定。" : "先放一张图。";
+  if (state.step === 2) return "认出墙 / 门 / 柱 · 请确认比例";
+  if (state.step === 4) return "点一下就能改：漏墙 / 误认家具 / 门洞";
+  if (state.step === 5) return "拖拽可以转。层高默认 4 m。";
+  if (state.step === 6) {
+    const hand = handMetrics();
+    if (hand.ok) return `手填 ${fmt(hand.length)} m × ${fmt(hand.width)} m。这是兜底，不是识别结果。`;
+    return "识别不准时：底图 + 手填长宽";
+  }
+  if (!state.scaleConfirmed) return "比例还没锁定。";
+  const m = metrics();
+  if (!m.ok) return "比例还没锁定。";
+  return `已锁定外包 ${fmt(m.widthM)} 米 × ${fmt(m.depthM)} 米。`;
+}
+function handMetrics() {
+  const length = parseLength(state.handL);
+  const width = parseLength(state.handW);
+  if (length.error || width.error) return { ok: false };
+  const l = convert(length.value, "m");
+  const w = convert(width.value, "m");
+  if (l < 3 || l > 200 || w < 3 || w > 200) return { ok: false, error: "range" };
+  return { ok: true, length: l, width: w };
+}
+
+function hitRect(w) {
+  const pad = 3.4;
+  const horizontal = Math.abs(w.y2 - w.y1) < 0.01;
+  const x = horizontal ? Math.min(w.x1, w.x2) : w.x1 - pad;
+  const y = horizontal ? w.y1 - pad : Math.min(w.y1, w.y2);
+  const width = horizontal ? Math.abs(w.x2 - w.x1) : pad * 2;
+  const height = horizontal ? pad * 2 : Math.abs(w.y2 - w.y1);
+  return { x, y, width, height };
+}
+function planSvg() {
+  const showMeters = state.scaleConfirmed && metrics().ok && state.step >= 3 && state.step !== 6;
+  const scaleNote = showMeters
+    ? `外包 ${fmt(metrics().widthM)} 米 × ${fmt(metrics().depthM)} 米`
+    : "比例未锁定";
+  const lines = WALLS.map((w, i) => {
+    const on = state.picked && w.id === state.selected ? " is-on" : "";
+    const hint = state.step === 3 && !state.picked && w.longest ? " is-hint" : "";
+    const tab = state.step === 3 ? "0" : "-1";
+    const label = w.outer ? w.name : `${w.name}，内墙，不能用来定比例`;
+    const box = hitRect(w);
+    return `<line class="wall${on}${hint}" pathLength="100" style="animation-delay:${(i * 0.045).toFixed(2)}s" x1="${w.x1}" y1="${w.y1}" x2="${w.x2}" y2="${w.y2}"/>
+      <rect class="hit" data-wall="${w.id}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" tabindex="${tab}" role="button" aria-label="${label}" aria-pressed="${state.picked && w.id === state.selected}"/>`;
+  }).join("");
+  const doorOpen = !(state.step === 4 && !state.fixDoor);
+  const door = doorOpen
+    ? `<g class="door" aria-hidden="true"><line x1="18" y1="58" x2="18" y2="44"/><path d="M32 58 A14 14 0 0 0 18 44"/><line x1="62" y1="26" x2="52" y2="26"/><path d="M62 16 A10 10 0 0 0 52 26"/></g>`
+    : `<line class="door-block" x1="18" y1="58" x2="32" y2="58"/><g class="door" aria-hidden="true"><line x1="62" y1="26" x2="52" y2="26"/><path d="M62 16 A10 10 0 0 0 52 26"/></g>`;
+  const doorHit = state.step === 4
+    ? `<rect class="hit" data-fix="door" x="16" y="54.2" width="18" height="7.2" tabindex="0" role="button" aria-label="门洞，点一下就能改"/>`
+    : "";
+  const missing = state.step === 4
+    ? `<line class="ghost${state.fixMissing ? " fixed" : ""}" x1="${MISSING.x1}" y1="${MISSING.y1}" x2="${MISSING.x2}" y2="${MISSING.y2}"/>
+       <rect class="hit" data-fix="missing" x="36" y="20.6" width="20" height="6.8" tabindex="0" role="button" aria-label="漏墙，点一下就能改"/>`
+    : "";
+  const furnClass = state.step === 4 && !state.fixFurniture ? "furn as-wall" : "furn";
+  const furnHit = state.step === 4
+    ? `<rect class="hit" data-fix="furniture" x="39" y="38.4" width="18" height="16" tabindex="0" role="button" aria-label="误认家具，点一下就能改"/>`
+    : "";
+  return `<svg class="mode-${state.step}" viewBox="0 0 100 78" role="img" aria-label="示意平面图">
+    <defs>
+      <pattern id="grid" width="4" height="4" patternUnits="userSpaceOnUse">
+        <path d="M 4 0 L 0 0 0 4" fill="none" stroke="#243044" stroke-opacity="0.12" stroke-width="0.15"/>
+      </pattern>
+    </defs>
+    <rect width="100" height="78" fill="url(#grid)"/>
+    <rect x="1" y="1" width="98" height="76" fill="none" stroke="#1d1a16" stroke-opacity="0.28" stroke-width="0.3"/>
+    <rect class="roomfill" x="62" y="6" width="32" height="30" fill="rgba(15,94,91,0.07)"/>
+    <text class="room" x="22" y="18">主厅</text>
+    <text class="room" x="68" y="16">侧间</text>
+    ${lines}
+    ${missing}
+    ${door}
+    ${doorHit}
+    <g class="col-shape" aria-hidden="true">
+      <rect x="24" y="30" width="4.5" height="4.5"/>
+      <path d="M24 30 L28.5 34.5 M28.5 30 L24 34.5"/>
+    </g>
+    <g class="${furnClass}" aria-hidden="true">
+      <rect x="40" y="42" width="16" height="9"/>
+      <rect x="42" y="39.2" width="3" height="2.2"/>
+      <rect x="51" y="39.2" width="3" height="2.2"/>
+      <rect x="42" y="51.4" width="3" height="2.2"/>
+      <rect x="51" y="51.4" width="3" height="2.2"/>
+      <circle cx="80" cy="22" r="2.5"/>
+      <text class="ignore" x="40" y="38">家具</text>
+    </g>
+    ${furnHit}
+    <g class="north" aria-hidden="true">
+      <path d="M92 5.2 L94.3 10.4 L92 9.3 L89.7 10.4 Z"/>
+      <text font-size="2.2" x="90.6" y="13.6">N</text>
+    </g>
+    <text class="tiny" x="6" y="74">${scaleNote}</text>
+  </svg>`;
+}
+
+function renderViewport() {
+  const viewport = document.getElementById("viewport");
+  document.getElementById("flag").textContent = flagText();
+  document.getElementById("caption").textContent = captionText();
+  document.getElementById("file").textContent = state.loaded ? "示意底图 · 无文件名" : "内置示意 · 无文件";
+  if (!state.loaded && state.step === 1) {
+    viewport.innerHTML = `<div class="drop" id="drop" tabindex="0" role="button"><strong>拖入场地平面图（PNG / JPG）</strong><span class="fine">点一下，或把文件拖到这里。示意不会读取文件名，也不会上传。</span></div>`;
+    bindDrop();
+    return;
+  }
+  if (state.step === 5) {
+    viewport.innerHTML = '<canvas id="view3d" aria-label="挤出后的空间，可拖拽旋转"></canvas>';
+    bindCanvas(document.getElementById("view3d"));
+    playExtrude();
+    return;
+  }
+  const svg = planSvg();
+  viewport.innerHTML = state.step === 6 ? `<div class="underlay">${svg}</div>` : svg;
+  bindHits();
+}
+function bindDrop() {
+  const drop = document.getElementById("drop");
+  if (!drop) return;
+  const load = (event) => {
+    if (event) event.preventDefault();
+    state.loaded = true;
+    render();
+  };
+  drop.addEventListener("click", load);
+  drop.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      load();
+    }
+  });
+  ["dragenter", "dragover"].forEach((name) => {
+    drop.addEventListener(name, (event) => {
+      event.preventDefault();
+      drop.classList.add("over");
+    });
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", load);
+}
+function bindHits() {
+  const viewport = document.getElementById("viewport");
+  viewport.querySelectorAll(".hit").forEach((hit) => {
+    const act = () => {
+      if (hit.dataset.wall && state.step === 3) selectWall(hit.dataset.wall);
+      if (hit.dataset.fix && state.step === 4) toggleFix(hit.dataset.fix);
+    };
+    hit.addEventListener("click", act);
+    hit.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        act();
+      }
+    });
+  });
+}
+function selectWall(id) {
+  const wall = findWall(id);
+  if (!wall.outer) {
+    state.innerHint = "内墙不拿来定比例。请点外墙。";
+    const hint = document.getElementById("inner-hint");
+    if (hint) hint.textContent = state.innerHint;
+    return;
+  }
+  state.innerHint = "";
+  state.picked = true;
+  state.selected = id;
+  state.scaleConfirmed = false;
+  ensureCheckWall();
+  const radio = document.querySelector(`input[name="wall"][value="${id}"]`);
+  if (radio) radio.checked = true;
+  const pick = document.getElementById("pick-state");
+  if (pick) pick.textContent = `已点：${wall.name}${wall.longest ? "，这是最长外墙。" : "。最长的是北外墙。"}`;
+  const len = document.getElementById("len");
+  if (len) len.disabled = false;
+  onScaleEdit();
+}
+function toggleFix(name) {
+  const key = FIX_KEY[name];
+  if (!key) return;
+  state[key] = !state[key];
+  render();
+}
+
+function outerOptions(selectedId, current) {
+  return WALLS.filter((w) => w.outer && w.id !== selectedId).map((w) => {
+    const checked = w.id === current ? " selected" : "";
+    return `<option value="${w.id}"${checked}>${w.name}</option>`;
+  }).join("");
+}
+function renderPanel() {
+  const panel = document.getElementById("panel");
+  if (state.step === 1) {
+    panel.innerHTML = `
+      <h2>上传</h2>
+      <p>拖入场地平面图（PNG / JPG）</p>
+      <p class="fine">${state.loaded ? "已放进一张画在页面里的假图。下一步只认结构。" : "还没放图。点左侧区域，或把图拖进去。"}</p>
+      <div class="actions">
+        <button type="button" class="primary" id="next"${state.loaded ? "" : " disabled"}>下一步：看识别</button>
+      </div>`;
+  } else if (state.step === 2) {
+    panel.innerHTML = `
+      <h2>识别结果</h2>
+      <p>认出墙 / 门 / 柱 · 请确认比例</p>
+      <ul class="facts">
+        <li>墙：外墙 5 段，内墙 3 段</li>
+        <li>门：2 个门洞</li>
+        <li>柱：1</li>
+        <li>桌子和盆栽留在图上，不进结构</li>
+      </ul>
+      <p class="fine">这一步只报结构。</p>
+      <div class="actions">
+        <button type="button" class="ghost" id="back">上一步</button>
+        <button type="button" class="primary" id="next">下一步：确认比例</button>
+      </div>`;
+  } else if (state.step === 3) {
+    const picks = WALLS.filter((w) => w.outer).map((w) => {
+      const tag = w.longest ? " · 最长" : "";
+      const checked = state.picked && w.id === state.selected ? " checked" : "";
+      return `<label><input type="radio" name="wall" value="${w.id}"${checked}>${w.name}${tag}</label>`;
+    }).join("");
+    panel.innerHTML = `
+      <h2>比例确认</h2>
+      <p>点一面最长外墙，输入真实长度</p>
+      <p class="fine" id="pick-state">${state.picked ? `已点：${findWall(state.selected).name}` : "还没点。北外墙是最长的那条，图上用虚线提示。"}</p>
+      <div class="picks" role="radiogroup" aria-label="用来定比例的外墙">${picks}</div>
+      <label class="field">这面墙的真实长度
+        <span class="row">
+          <input id="len" type="text" inputmode="decimal" autocomplete="off" placeholder="例如 24" ${state.picked ? "" : "disabled"} value="${esc(state.lengthRaw)}">
+          <select id="unit" aria-label="单位"${state.picked ? "" : " disabled"}>
+            <option value="m"${state.unit === "m" ? " selected" : ""}>米</option>
+            <option value="mm"${state.unit === "mm" ? " selected" : ""}>毫米</option>
+            <option value="ft"${state.unit === "ft" ? " selected" : ""}>英尺</option>
+          </select>
+        </span>
+      </label>
+      <p>用第二条已知尺寸复核</p>
+      <label class="field">另一条外墙
+        <select id="check-wall">${outerOptions(state.selected, state.checkId)}</select>
+      </label>
+      <label class="field">这条边的真实长度
+        <span class="row">
+          <input id="check-len" type="text" inputmode="decimal" autocomplete="off" placeholder="例如 14" value="${esc(state.checkRaw)}">
+          <select id="check-unit" aria-label="第二条的单位">
+            <option value="m"${state.checkUnit === "m" ? " selected" : ""}>米</option>
+            <option value="mm"${state.checkUnit === "mm" ? " selected" : ""}>毫米</option>
+            <option value="ft"${state.checkUnit === "ft" ? " selected" : ""}>英尺</option>
+          </select>
+        </span>
+      </label>
+      <p class="fine" id="check-note"></p>
+      <div class="readout" id="locked"></div>
+      <p class="warn" id="inner-hint"></p>
+      <div class="actions">
+        <button type="button" class="ghost" id="back">上一步</button>
+        <button type="button" class="primary" id="confirm">确认比例</button>
+        <button type="button" class="primary" id="next">下一步：改清单</button>
+      </div>`;
+    document.getElementById("len").addEventListener("input", (event) => {
+      state.lengthRaw = event.target.value;
+      onScaleEdit();
+    });
+    document.getElementById("unit").addEventListener("change", (event) => {
+      state.unit = event.target.value;
+      onScaleEdit();
+    });
+    document.getElementById("check-len").addEventListener("input", (event) => {
+      state.checkRaw = event.target.value;
+      onScaleEdit();
+    });
+    document.getElementById("check-unit").addEventListener("change", (event) => {
+      state.checkUnit = event.target.value;
+      onScaleEdit();
+    });
+    document.getElementById("check-wall").addEventListener("change", (event) => {
+      state.checkId = event.target.value;
+      onScaleEdit();
+    });
+    panel.querySelectorAll('input[name="wall"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) selectWall(radio.value);
+      });
+    });
+    document.getElementById("confirm").addEventListener("click", () => {
+      if (!canConfirm()) return;
+      state.scaleConfirmed = true;
+      state.reached = Math.max(state.reached, 3);
+      paintScale();
+      renderViewport();
+      syncNext();
+    });
+    paintScale();
+  } else if (state.step === 4) {
+    const item = (key, name, done, pending) =>
+      `<button type="button" data-fix="${key}" aria-pressed="${state[FIX_KEY[key]] ? "true" : "false"}">${name} · ${state[FIX_KEY[key]] ? done : pending}</button>`;
+    panel.innerHTML = `
+      <h2>清单修正</h2>
+      <p>点一下就能改：漏墙 / 误认家具 / 门洞</p>
+      <div class="issues">
+        ${item("missing", "漏墙", "已补上", "点一下补上")}
+        ${item("furniture", "误认家具", "已改回家具", "点一下改回")}
+        ${item("door", "门洞", "已打开", "点一下打开")}
+      </div>
+      <p class="fine">也可以直接点图上的虚线、桌子或南侧缺口。</p>
+      <div class="actions">
+        <button type="button" class="ghost" id="back">上一步</button>
+        <button type="button" class="primary" id="next">下一步：挤出</button>
+      </div>`;
+    panel.querySelectorAll("[data-fix]").forEach((button) => {
+      button.addEventListener("click", () => toggleFix(button.dataset.fix));
+    });
+  } else if (state.step === 5) {
+    panel.innerHTML = `
+      <h2>挤出成空间</h2>
+      <p>层高默认 4 m · 生成可布置的 3D</p>
+      <div class="stats" id="stats"></div>
+      <label class="field">层高 <span id="hval"></span>
+        <input id="height" type="range" min="2.4" max="8" step="0.1" value="${state.height}">
+      </label>
+      <p class="fine" id="hsrc"></p>
+      <p class="fine" id="thick-note" hidden>图上的墙加粗了，否则几乎看不见。数字仍是 0.2 m。</p>
+      <ul class="key">
+        <li><i class="swatch wall"></i>墙</li>
+        <li><i class="swatch col"></i>柱</li>
+        <li><i class="swatch gap"></i>门洞</li>
+      </ul>
+      <div class="turn">
+        <button type="button" class="tinybtn" id="turn-l">向左转</button>
+        <button type="button" class="tinybtn" id="turn-r">向右转</button>
+        <button type="button" class="tinybtn" id="reset-view">重置视角</button>
+      </div>
+      <div class="actions">
+        <button type="button" class="ghost" id="back">上一步</button>
+        <button type="button" class="primary" id="next">下一步：看兜底</button>
+      </div>`;
+    const slider = document.getElementById("height");
+    slider.addEventListener("input", () => {
+      state.height = Number(slider.value);
+      state.heightTouched = Math.abs(state.height - 4) > 0.001;
+      paintHeight();
+      draw();
+    });
+    document.getElementById("turn-l").addEventListener("click", () => nudge(-0.28));
+    document.getElementById("turn-r").addEventListener("click", () => nudge(0.28));
+    document.getElementById("reset-view").addEventListener("click", () => {
+      state.yaw = -0.55;
+      state.pitch = 0.55;
+      state.height = 4;
+      state.heightTouched = false;
+      slider.value = "4";
+      paintHeight();
+      draw();
+    });
+    paintHeight();
+    paintStats();
+  } else {
+    panel.innerHTML = `
+      <h2>识别不准时：底图 + 手填长宽</h2>
+      <p>底图留着。长和宽自己填，不沿用前面锁定的数。</p>
+      <label class="field">长
+        <input id="hand-l" type="text" inputmode="decimal" autocomplete="off" placeholder="例如 24" value="${esc(state.handL)}">
+      </label>
+      <label class="field">宽
+        <input id="hand-w" type="text" inputmode="decimal" autocomplete="off" placeholder="例如 14" value="${esc(state.handW)}">
+      </label>
+      <p class="fine" id="hand-note"></p>
+      <div class="actions">
+        <button type="button" class="ghost" id="back">上一步</button>
+        <button type="button" class="primary" id="restart">再走一遍</button>
+      </div>`;
+    const paintHand = () => {
+      const note = document.getElementById("hand-note");
+      const hand = handMetrics();
+      if (!state.handL.trim() && !state.handW.trim()) {
+        note.textContent = "两个数都填上，才在底图上画出矩形。";
+      } else if (!hand.ok) {
+        note.textContent = "长和宽都要在 3 到 200 之间。";
+      } else {
+        note.textContent = `手填矩形 ${fmt(hand.length)} m × ${fmt(hand.width)} m。`;
+      }
+      document.getElementById("caption").textContent = captionText();
+    };
+    document.getElementById("hand-l").addEventListener("input", (event) => {
+      state.handL = event.target.value;
+      paintHand();
+    });
+    document.getElementById("hand-w").addEventListener("input", (event) => {
+      state.handW = event.target.value;
+      paintHand();
+    });
+    paintHand();
+  }
+  const next = document.getElementById("next");
+  const back = document.getElementById("back");
+  const restart = document.getElementById("restart");
+  if (next) next.addEventListener("click", () => go(state.step + 1));
+  if (back) back.addEventListener("click", () => go(state.step - 1));
+  if (restart) restart.addEventListener("click", restartFlow);
+  syncNext();
+}
+
+function paintScale() {
+  const note = document.getElementById("check-note");
+  const locked = document.getElementById("locked");
+  const confirm = document.getElementById("confirm");
+  const inner = document.getElementById("inner-hint");
+  if (inner) inner.textContent = state.innerHint;
+  if (!note || !locked || !confirm) return;
+  const first = metrics();
+  const second = secondMetrics();
+  if (state.scaleConfirmed && first.ok) {
+    note.textContent = "两条尺寸已复核。";
+    locked.innerHTML = `<p>已锁定外包 <strong>${fmt(first.widthM)} 米 × ${fmt(first.depthM)} 米</strong>。</p><p>墙厚 0.2 m、门洞高 2.1 m，都是默认，挤出时再用。</p>`;
+    confirm.disabled = true;
+    confirm.textContent = "已确认比例";
+    return;
+  }
+  locked.innerHTML = "<p>确认之前，不锁定全图的米数。</p>";
+  confirm.textContent = "确认比例";
+  if (!state.picked) {
+    note.textContent = "先点一面外墙。";
+    confirm.disabled = true;
+    return;
+  }
+  if (first.error === "empty" || second.error === "empty") {
+    note.textContent = "两条长度都填上，才能复核。";
+    confirm.disabled = true;
+    return;
+  }
+  if (!first.ok || !second.ok) {
+    note.textContent = "每条边要落在 3–200 米，而且不能把全图放到这个范围外面。";
+    confirm.disabled = true;
+    return;
+  }
+  if (!scalesAgree(first, second)) {
+    note.textContent = "两条尺寸对不上。改一条再确认。";
+    confirm.disabled = true;
+    return;
+  }
+  note.textContent = "两条对得上。点确认之后才锁定。";
+  confirm.disabled = false;
+}
+function paintHeight() {
+  const hval = document.getElementById("hval");
+  const hsrc = document.getElementById("hsrc");
+  if (!hval) return;
+  hval.textContent = `${state.height.toFixed(1)} m`;
+  hsrc.textContent = state.heightTouched
+    ? "来源：你在预览里改的，只影响这张示意。"
+    : "来源：默认 4 m，不是实测。";
+}
+function paintStats() {
+  const box = document.getElementById("stats");
+  if (!box) return;
+  const m = metrics();
+  if (!m.ok) {
+    box.innerHTML = "<p>比例还没锁定。</p>";
+    return;
+  }
+  const cells = [
+    [`${fmt(m.widthM)} m`, "外包宽"],
+    [`${fmt(m.depthM)} m`, "进深"],
+    ["0.2 m", "墙厚 · 默认"],
+    ["2.1 m", "门洞高 · 默认"]
+  ];
+  box.innerHTML = cells.map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join("");
+}
+function onScaleEdit() {
+  state.scaleConfirmed = false;
+  paintScale();
+  const check = document.getElementById("check-wall");
+  if (check && check.value !== state.checkId) {
+    check.innerHTML = outerOptions(state.selected, state.checkId);
+  }
+  document.getElementById("caption").textContent = captionText();
+  document.getElementById("flag").textContent = flagText();
+  if (state.step === 3) renderViewport();
+  syncNext();
+}
+function syncNext() {
+  const next = document.getElementById("next");
+  if (next && state.step === 1) next.disabled = !state.loaded;
+  if (next && state.step === 3) next.disabled = !state.scaleConfirmed;
+  document.querySelectorAll(".steps button").forEach((btn) => {
+    const n = Number(btn.dataset.step);
+    btn.disabled = !stepEnabled(n);
+    if (n === state.step) btn.setAttribute("aria-current", "step");
+    else btn.removeAttribute("aria-current");
+  });
+}
+
+function go(to) {
+  if (to < 1 || to > 6 || to === state.step) return;
+  if (!stepEnabled(to)) return;
+  state.step = to;
+  state.reached = Math.max(state.reached, to);
+  if (to === 5) state.extrude = 0;
+  render();
+  document.getElementById("live").textContent = `第 ${to} 步，${STEPS[to - 1].label}`;
+}
+function restartFlow() {
+  state.step = 1;
+  state.reached = 1;
+  state.loaded = false;
+  state.picked = false;
+  state.selected = null;
+  state.lengthRaw = "";
+  state.unit = "m";
+  state.checkId = "west";
+  state.checkRaw = "";
+  state.checkUnit = "m";
+  state.scaleConfirmed = false;
+  state.fixMissing = false;
+  state.fixFurniture = false;
+  state.fixDoor = false;
+  state.handL = "";
+  state.handW = "";
+  state.yaw = -0.55;
+  state.pitch = 0.55;
+  state.height = 4;
+  state.heightTouched = false;
+  state.extrude = 1;
+  state.innerHint = "";
+  render();
+}
+function render() {
+  renderSteps();
+  renderPanel();
+  renderViewport();
+}
+
+function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function normalize(a) {
+  const len = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / len, a[1] / len, a[2] / len];
+}
+function addFace(faces, pts, kind) {
+  const n = normalize(cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])));
+  faces.push({ pts, n, kind });
+}
+function pushSeg(faces, a, b, z0, z1, half, kind) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len * half;
+  const ny = dx / len * half;
+  const bottom = [
+    [a[0] + nx, a[1] + ny, z0],
+    [b[0] + nx, b[1] + ny, z0],
+    [b[0] - nx, b[1] - ny, z0],
+    [a[0] - nx, a[1] - ny, z0]
+  ];
+  const top = bottom.map((p) => [p[0], p[1], z1]);
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    addFace(faces, [bottom[i], bottom[j], top[j], top[i]], kind);
+  }
+  addFace(faces, [top[0], top[3], top[2], top[1]], kind + "top");
+}
+function pushBox(faces, x, y, w, d, z0, z1, kind) {
+  const p = [[x, y, z0], [x + w, y, z0], [x + w, y + d, z0], [x, y + d, z0]];
+  const top = p.map((q) => [q[0], q[1], z1]);
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    addFace(faces, [p[i], p[j], top[j], top[i]], kind);
+  }
+  addFace(faces, [top[0], top[1], top[2], top[3]], kind + "top");
+}
+
+function draw() {
+  const canvas = document.getElementById("view3d");
+  if (!canvas || state.step !== 5) return;
+  const m = metrics();
+  if (!m.ok || !state.scaleConfirmed) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(10, rect.width);
+  const h = Math.max(10, rect.height);
+  const needW = Math.floor(w * dpr);
+  const needH = Math.floor(h * dpr);
+  if (canvas.width !== needW || canvas.height !== needH) {
+    canvas.width = needW;
+    canvas.height = needH;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const W = m.widthM;
+  const D = m.depthM;
+  const t = state.extrude;
+  const H = state.height * t;
+  const X = (sx) => (sx - SHEET.x0) / SHEET.w * W;
+  const Y = (sy) => (sy - SHEET.y0) / SHEET.d * D;
+  const yaw = state.yaw;
+  const pitch = state.pitch;
+  function project(p) {
+    const px = p[0] - W / 2;
+    const py = p[1] - D / 2;
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    const rx = px * c - py * s;
+    const ry = px * s + py * c;
+    return { sx: rx, sy: ry * pitch - p[2], ry };
+  }
+  const corners = [[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0], [0, 0, H], [W, 0, H], [W, D, H], [0, D, H]];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  corners.forEach((p) => {
+    const s = project(p);
+    minX = Math.min(minX, s.sx); maxX = Math.max(maxX, s.sx);
+    minY = Math.min(minY, s.sy); maxY = Math.max(maxY, s.sy);
+  });
+  const pad = 36;
+  const scale = Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1));
+  const ox = w / 2 - (minX + maxX) / 2 * scale;
+  const oy = h / 2 - (minY + maxY) / 2 * scale;
+  const screenOf = (p) => {
+    const u = project(p);
+    return { sx: ox + u.sx * scale, sy: oy + u.sy * scale, ry: u.ry };
+  };
+  const half = Math.max(0.1, 1.8 / scale);
+  const note = document.getElementById("thick-note");
+  if (note) note.hidden = half <= 0.1001;
+  const faces = [];
+  WALLS.forEach((wall) => {
+    pushSeg(faces, [X(wall.x1), Y(wall.y1)], [X(wall.x2), Y(wall.y2)], 0, H, half, "wall");
+  });
+  if (!state.fixDoor) {
+    pushSeg(faces, [X(18), Y(58)], [X(32), Y(58)], 0, H, half, "wall");
+  } else if (state.height > 2.1) {
+    pushSeg(faces, [X(18), Y(58)], [X(32), Y(58)], 2.1 * t, H, half, "wall");
+  }
+  if (state.height > 2.1) {
+    pushSeg(faces, [X(62), Y(16)], [X(62), Y(26)], 2.1 * t, H, half, "wall");
+  }
+  if (state.fixMissing) {
+    pushSeg(faces, [X(MISSING.x1), Y(MISSING.y1)], [X(MISSING.x2), Y(MISSING.y2)], 0, H, half, "wall");
+  }
+  if (!state.fixFurniture) {
+    pushBox(faces, X(40), Y(42), 16 / 88 * W, 9 / 52 * D, 0, Math.min(0.9, H), "furn");
+  }
+  pushBox(faces, X(24), Y(30), 4.5 / 88 * W, 4.5 / 52 * D, 0, H, "col");
+  const toward = normalize([Math.sin(yaw), Math.cos(yaw), 0.65]);
+  const light = normalize([0.2, -0.35, 0.9]);
+  const visible = [];
+  faces.forEach((face) => {
+    if (dot(face.n, toward) <= 0.02) return;
+    const proj = face.pts.map(screenOf);
+    const depth = proj.reduce((sum, p) => sum + p.ry, 0) / proj.length;
+    visible.push({ face, proj, depth });
+  });
+  visible.sort((a, b) => a.depth - b.depth);
+  function poly(points, fill, stroke) {
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const s = screenOf(p);
+      if (i === 0) ctx.moveTo(s.sx, s.sy);
+      else ctx.lineTo(s.sx, s.sy);
+    });
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.stroke();
+    }
+  }
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 1;
+  poly([[0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0]], "#e4dccb", "rgba(70,58,42,0.25)");
+  poly([[X(62), Y(6), 0.02], [X(94), Y(6), 0.02], [X(94), Y(36), 0.02], [X(62), Y(36), 0.02]], "#ddd3c3");
+  if (state.fixDoor) {
+    poly([[X(18), D, 0.03], [X(32), D, 0.03], [X(32), D + Math.min(0.7, D * 0.04), 0.03], [X(18), D + Math.min(0.7, D * 0.04), 0.03]], "#0f5e5b");
+  }
+  visible.forEach((item) => {
+    const kind = item.face.kind;
+    const lit = 0.48 + 0.52 * Math.max(0, dot(item.face.n, light));
+    let base = kind.endsWith("top") ? [246, 241, 232] : [214, 204, 188];
+    if (kind.startsWith("col")) base = kind.endsWith("top") ? [214, 204, 190] : [168, 154, 136];
+    if (kind.startsWith("furn")) base = kind.endsWith("top") ? [214, 176, 132] : [176, 132, 86];
+    ctx.beginPath();
+    item.proj.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.sx, p.sy);
+      else ctx.lineTo(p.sx, p.sy);
+    });
+    ctx.closePath();
+    ctx.fillStyle = `rgb(${base.map((c) => Math.round(c * lit)).join(",")})`;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(36,30,24,0.45)";
+    ctx.stroke();
+  });
+  const north = screenOf([W / 2, -Math.max(0.4, D * 0.04), 0]);
+  ctx.fillStyle = "#5f594f";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("北", north.sx, north.sy);
+}
+
+function bindCanvas(canvas) {
+  let drag = null;
+  canvas.addEventListener("pointerdown", (event) => {
+    drag = { x: event.clientX, y: event.clientY, yaw: state.yaw, pitch: state.pitch };
+    canvas.setPointerCapture(event.pointerId);
+    canvas.classList.add("dragging");
+    animToken += 1;
+    state.extrude = 1;
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    state.yaw = drag.yaw + (event.clientX - drag.x) * 0.008;
+    state.pitch = Math.min(0.75, Math.max(0.32, drag.pitch + (event.clientY - drag.y) * 0.002));
+    draw();
+  });
+  const end = () => {
+    drag = null;
+    canvas.classList.remove("dragging");
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+}
+function nudge(delta) {
+  animToken += 1;
+  state.extrude = 1;
+  state.yaw += delta;
+  draw();
+}
+function playExtrude() {
+  const token = ++animToken;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    state.extrude = 1;
+    draw();
+    return;
+  }
+  state.extrude = 0;
+  const t0 = performance.now();
+  const frame = (now) => {
+    if (token !== animToken || state.step !== 5) return;
+    const t = Math.min(1, (now - t0) / 800);
+    state.extrude = 1 - Math.pow(1 - t, 3);
+    draw();
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+document.getElementById("steps").addEventListener("click", (event) => {
+  const btn = event.target.closest("button");
+  if (!btn || btn.disabled) return;
+  go(Number(btn.dataset.step));
+});
+window.addEventListener("resize", () => {
+  if (state.step === 5) draw();
+});
+render();
+</script>
+</body>
+</html>
