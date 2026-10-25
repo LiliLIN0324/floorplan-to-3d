@@ -19,6 +19,7 @@
 
 - [`docs/floorplan-3d-ai-native-upgrade.md`](docs/floorplan-3d-ai-native-upgrade.md) — AI-native 升级规格（场地进空间，只写规格）
 - [`docs/T-3D-acceptance-for-executors.md`](docs/T-3D-acceptance-for-executors.md) — T-3D-* 验收（给 Trae/Qoder/DSH）
+- [`docs/3dgs-scendance-research.md`](docs/3dgs-scendance-research.md) — 3DGS 调研（splat=观感层；布置仍 glTF）
 
 ## 隐私
 
