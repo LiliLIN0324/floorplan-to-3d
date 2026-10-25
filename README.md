@@ -15,6 +15,11 @@
 
 打开 [`demos/index.html`](demos/index.html) 可点通全流程。代理指令见 [`SKILL.md`](SKILL.md)。
 
+## 文档
+
+- [`docs/floorplan-3d-ai-native-upgrade.md`](docs/floorplan-3d-ai-native-upgrade.md) — AI-native 升级规格（场地进空间，只写规格）
+- [`docs/T-3D-acceptance-for-executors.md`](docs/T-3D-acceptance-for-executors.md) — T-3D-* 验收（给 Trae/Qoder/DSH）
+
 ## 隐私
 
 不上私人路径、个人对象存储、真实客户场地名。占位符：`./docs/`、`<ASSET_BASE_URL>`。
